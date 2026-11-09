@@ -1,5 +1,9 @@
 const User = require('../models/User');
-const { hashPassword } = require('../services/passwordService');
+const { hashPassword, comparePassword } = require('../services/passwordService');
+const {
+  generateAccessToken,
+  generateRefreshToken
+} = require('../services/tokenService');
 
 exports.register = async (req, res) => {
   try {
@@ -65,6 +69,80 @@ exports.register = async (req, res) => {
       error: {
         code: 'INTERNAL_SERVER_ERROR',
         message: 'Không thể đăng ký tài khoản.'
+      }
+    });
+  }
+};
+    exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'MISSING_REQUIRED_FIELDS',
+          message: 'email và password là bắt buộc.'
+        }
+      });
+    }
+
+    const user = await User.findOne({
+      where: { email }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Email hoặc mật khẩu không chính xác.'
+        }
+      });
+    }
+
+    const isPasswordValid = await comparePassword(
+      password,
+      user.password
+    );
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Email hoặc mật khẩu không chính xác.'
+        }
+      });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    await user.update({ refreshToken });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đăng nhập thành công.',
+      data: {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role
+        },
+        accessToken,
+        refreshToken
+      }
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Không thể đăng nhập.'
       }
     });
   }
